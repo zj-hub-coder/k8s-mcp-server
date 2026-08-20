@@ -8,6 +8,7 @@ __pycache__/
 *.so
 *.egg
 *.egg-info/
+.pytest_cache/
 dist/
 build/
 .eggs/

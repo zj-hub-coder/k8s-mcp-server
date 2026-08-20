@@ -1,7 +1,8 @@
 """Pod 定位解析：按 label_selector / workload / pod_name 多入口查找 Pod。"""
 
-from kubernetes.client import AppsV1Api
 from kubernetes.client.rest import ApiException
+
+from k8s_client import get_apps_v1
 
 
 def resolve_pods(v1, pod_name, namespace, label_selector, workload, workload_type):
@@ -18,24 +19,25 @@ def resolve_pods(v1, pod_name, namespace, label_selector, workload, workload_typ
         return [(p.metadata.namespace, p.metadata.name, p) for p in pods.items]
 
     if workload:
-        apps_v1 = AppsV1Api()
-        wt = (workload_type or "Deployment").capitalize()
-        if wt == "Deployment":
+        apps_v1 = get_apps_v1()
+        wt = (workload_type or "Deployment").lower()
+        if wt == "deployment":
             obj = apps_v1.read_namespaced_deployment(workload, namespace)
             selector = obj.spec.selector.match_labels or {}
-        elif wt == "Daemonset":
+        elif wt == "daemonset":
             obj = apps_v1.read_namespaced_daemon_set(workload, namespace)
             selector = obj.spec.selector.match_labels or {}
-        elif wt == "Statefulset":
+        elif wt == "statefulset":
             obj = apps_v1.read_namespaced_stateful_set(workload, namespace)
             selector = obj.spec.selector.match_labels or {}
         else:
-            raise ValueError(f"不支持的 workload_type: {wt}")
+            raise ValueError(f"不支持的 workload_type: {workload_type or 'Deployment'}")
 
         if not selector:
-            raise ValueError(f"{wt} '{namespace}/{workload}' 无 selector")
+            raise ValueError(f"{workload_type or 'Deployment'} '{namespace}/{workload}' 无 selector")
         label_selector = ",".join(f"{k}={v}" for k, v in selector.items())
-        pods = v1.list_pod_for_all_namespaces(label_selector=label_selector)
+        # 限定在 workload 所在命名空间内查询 Pod，避免同名 label 跨命名空间误匹配
+        pods = v1.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
         return [(p.metadata.namespace, p.metadata.name, p) for p in pods.items]
 
     if pod_name:

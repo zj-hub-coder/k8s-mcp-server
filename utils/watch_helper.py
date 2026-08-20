@@ -4,6 +4,7 @@
 上层只需提供「如何建立首次 watch」和「如何处理单条事件」两个钩子。
 """
 
+import asyncio
 import time
 
 from kubernetes import watch as k8s_watch
@@ -52,6 +53,39 @@ async def run_watch_loop(
         _watch_active = False
 
 
+def _drain_watch_stream(w, list_fn, kwargs, deadline, max_events):
+    """在 worker 线程中消费阻塞的 watch 流，收集原始事件。
+
+    kubernetes 官方客户端的 Watch.stream() 是同步阻塞生成器，每次 next()
+    都会阻塞到「下一条事件」或服务端超时。直接放在事件循环里迭代会冻结
+    整个 async 服务，因此这里把阻塞等待隔离到线程中，事件循环侧保持异步。
+
+    返回 (events, saw_410)：
+    - events: 本轮收集到的普通事件（含非 410 的 ERROR 事件）
+    - saw_410: 是否因 resourceVersion 过期（410 Gone）而提前退出
+    """
+    events = []
+    saw_410 = False
+    stream = w.stream(list_fn, **kwargs)
+    for event in stream:
+        if time.monotonic() >= deadline:
+            break
+        if len(events) >= max_events:
+            break
+
+        if event.get("type") == "ERROR":
+            raw_obj = event.get("object", {})
+            code = getattr(raw_obj, "code", None)
+            if code == 410 or (isinstance(raw_obj, dict) and raw_obj.get("code") == 410):
+                saw_410 = True
+                break
+            events.append(event)
+            continue
+
+        events.append(event)
+    return events, saw_410
+
+
 async def _do_run_watch_loop(
     list_fn,
     list_kwargs_fn,
@@ -74,35 +108,15 @@ async def _do_run_watch_loop(
             break
 
         iter_timeout = int(max(min_timeout, remaining))
+        deadline = start_time + timeout_seconds
 
         try:
             kwargs = list_kwargs_fn(last_resource_version, iter_timeout)
-            stream = w.stream(list_fn, **kwargs)
+            events, saw_410 = await asyncio.to_thread(
+                _drain_watch_stream, w, list_fn, kwargs, deadline, max_events - len(collected)
+            )
 
-            for event in stream:
-                if time.monotonic() - start_time >= timeout_seconds:
-                    break
-                if len(collected) >= max_events:
-                    break
-
-                # 410 Gone 处理
-                if event.get("type") == "ERROR":
-                    raw_obj = event.get("object", {})
-                    code = getattr(raw_obj, "code", None)
-                    if code == 410 or (isinstance(raw_obj, dict) and raw_obj.get("code") == 410):
-                        await ctx.info("⚠️ 收到 410 Gone，重置 resourceVersion 重新连接...")
-                        last_resource_version = None
-                        consecutive_410 += 1
-                        if consecutive_410 >= 5:
-                            w.stop()
-                            return collected, time.monotonic() - start_time, (
-                                "⚠️ 连续收到 5 次 410 Gone，可能集群事件过多"
-                            )
-                        break
-                    else:
-                        collected.append(event)
-                        continue
-
+            for event in events:
                 # 更新 resourceVersion
                 obj = event.get("object", {})
                 rv = None
@@ -121,6 +135,19 @@ async def _do_run_watch_loop(
                 processed = process_event_fn(event, {})
                 if processed is not None:
                     collected.append(processed)
+                    if len(collected) >= max_events:
+                        break
+
+            if saw_410:
+                await ctx.info("⚠️ 收到 410 Gone，重置 resourceVersion 重新连接...")
+                last_resource_version = None
+                consecutive_410 += 1
+                if consecutive_410 >= 5:
+                    w.stop()
+                    return collected, time.monotonic() - start_time, (
+                        "⚠️ 连续收到 5 次 410 Gone，可能集群事件过多"
+                    )
+                continue
 
         except ApiException as e:
             if e.status == 410:
@@ -140,11 +167,11 @@ async def _do_run_watch_loop(
                 )
             else:
                 await ctx.info(f"⚠️ 监听异常({e.status})，跳过本轮: {e.reason}")
-                time.sleep(2)
+                await asyncio.sleep(2)
                 continue
         except Exception as e:
             await ctx.info(f"⚠️ 监听异常，跳过本轮: {str(e)[:100]}")
-            time.sleep(2)
+            await asyncio.sleep(2)
             continue
 
     w.stop()

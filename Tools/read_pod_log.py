@@ -5,6 +5,31 @@ from app import mcp
 from k8s_client import get_v1
 from utils.pod_resolver import resolve_pods
 
+# 单 Pod 日志输出上限，防止 tail_lines=0 或 since_seconds 过大时把超大日志塞满 LLM 上下文
+MAX_LOG_LINES = 5000
+MAX_LOG_BYTES = 200 * 1024
+
+
+def _truncate_log(text: str) -> str:
+    """按行数 / 字节数双重上限截断日志，超出时追加截断提示。"""
+    lines = text.splitlines()
+    truncated = False
+
+    if len(lines) > MAX_LOG_LINES:
+        lines = lines[:MAX_LOG_LINES]
+        truncated = True
+
+    out = "\n".join(lines)
+    if len(out.encode("utf-8")) > MAX_LOG_BYTES:
+        # 按字节再截断（避免多字节字符把总长撑爆），保守地回退一段
+        while out and len(out.encode("utf-8")) > MAX_LOG_BYTES:
+            out = out[: int(len(out) * 0.8)]
+        truncated = True
+
+    if truncated:
+        out += f"\n...[已截断: 原始日志超过 {MAX_LOG_LINES} 行 / {MAX_LOG_BYTES // 1024}KB 上限]"
+    return out
+
 
 def _pick_container(pod, container):
     """为 Pod 选择容器：指定则校验，单容器自动选，多容器报错。"""
@@ -53,7 +78,7 @@ def _read_single_pod_log(v1, namespace, pod_name, container, tail_lines, since_s
             f"📭 {namespace}/{pod_name}/{container} 无日志输出"
             f"{'（前一个实例也无日志）' if previous else ''}"
         )
-    return log
+    return _truncate_log(log)
 
 
 @mcp.tool(annotations={

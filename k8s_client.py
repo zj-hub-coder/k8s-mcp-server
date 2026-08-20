@@ -14,6 +14,7 @@ from kubernetes import config as k8s_config
 import config
 
 _k8s_v1 = None
+_k8s_apps_v1 = None
 
 
 def _resolve_kubeconfig_path() -> str | None:
@@ -62,4 +63,17 @@ def get_v1() -> client.CoreV1Api:
     if _k8s_v1 is None:
         init_k8s_client()
     return _k8s_v1
+
+
+def get_apps_v1() -> client.AppsV1Api:
+    """获取 K8s AppsV1Api 客户端（懒加载），与 CoreV1Api 共享同一套连接配置。
+
+    Deployment/DaemonSet/StatefulSet 等 Workload 查询走这里，
+    避免在工具里直接 new AppsV1Api() 而绕过统一配置路径。
+    """
+    global _k8s_apps_v1
+    if _k8s_apps_v1 is None:
+        get_v1()  # 复用懒加载，确保连接配置已初始化
+        _k8s_apps_v1 = client.AppsV1Api()
+    return _k8s_apps_v1
 
