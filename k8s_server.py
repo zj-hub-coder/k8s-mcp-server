@@ -20,5 +20,8 @@ from app import mcp
 # =============================================
 
 if __name__ == "__main__":
-    mcp.run(transport=config.MCP_TRANSPORT, host=config.MCP_HOST, port=config.MCP_PORT)
-    #mcp.run(transport="stdio")
+    if config.MCP_TRANSPORT == "stdio":
+        # stdio 传输不接受 host/port 参数，否则会抛 TypeError
+        mcp.run(transport="stdio")
+    else:
+        mcp.run(transport=config.MCP_TRANSPORT, host=config.MCP_HOST, port=config.MCP_PORT)

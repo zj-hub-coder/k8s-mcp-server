@@ -2,7 +2,7 @@
 
 基于 [FastMCP](https://github.com/jlowin/fastmcp) 的 Kubernetes 运维查询 MCP 服务。把 `kubectl get / describe / logs / events --watch` 等日常排查动作封装成 LLM 可调用的只读工具，让 Claude 等客户端直接读集群状态、快速定位故障。
 
-> ⚠️ 本项目**只暴露只读工具**（无 create/update/delete）。但仍建议配合**只读 ServiceAccount** 的 RBAC 使用，见下文「安全建议」。
+> 当前版本**只暴露只读工具**（无 create/update/delete）。后续会逐步加入写操作（create / update / delete / exec / scale），届时会同步补齐安全机制（context 白名单、Secret 遮蔽等），见下文「安全建议」。
 
 ## 工具清单
 
@@ -21,6 +21,50 @@
 | `watch_pods` | 实时监听 Pod 状态变化 | `kubectl get pods --watch` |
 
 另有 `@mcp.prompt`（节点排查 / 集群巡检引导）和 `@mcp.resource`（`k8s://cluster/summary` 集群摘要）两类附加能力。
+
+## 架构图
+
+```mermaid
+flowchart LR
+    subgraph Client["MCP 客户端"]
+        LLM["Claude Code / Desktop / Cursor"]
+    end
+
+    subgraph Server["本 MCP Server（Python / FastMCP）"]
+        Entry["k8s_server.py<br/>入口：导入即注册"]
+        App["app.py<br/>FastMCP 实例（叶子模块）"]
+        Tools["Tools/ · 11 个只读工具"]
+        Prompts["prompts.py · 排查引导"]
+        Resources["resources.py · 集群摘要"]
+        Utils["utils/ · 解析 + watch 循环"]
+        KC["k8s_client.py<br/>懒加载客户端（单一配置来源）"]
+    end
+
+    subgraph Cluster["Kubernetes 集群"]
+        API["API Server"]
+        Obj["Node / Pod / Event"]
+    end
+
+    LLM <-->|"MCP<br/>stdio / http"| Entry
+    Entry --> App
+    App --> Tools
+    App --> Prompts
+    App --> Resources
+    Tools --> Utils
+    Tools --> KC
+    KC -->|"kubernetes SDK<br/>（只读查询）"| API
+    API --> Obj
+```
+
+分层说明：
+
+| 层 | 模块 | 职责 |
+| --- | --- | --- |
+| 传输层 | `k8s_server.py` | 按 `MCP_TRANSPORT` 启动 stdio 或 http，`import Tools` 即触发全部工具注册 |
+| 应用层 | `app.py` / `prompts.py` / `resources.py` | FastMCP 实例 + Prompt 引导 + Resource 资源 |
+| 工具层 | `Tools/*.py` | 11 个只读工具，每个一个文件，`@mcp.tool()` 装饰器注册 |
+| 解析层 | `utils/*.py` | 纯解析 / 状态快照对比 / 通用 watch 循环，无 K8s 与 MCP 依赖 |
+| 连接层 | `k8s_client.py` | K8s 客户端懒加载，连接优先级 in-cluster → 显式 kubeconfig → 标准解析链 |
 
 ## 目录结构
 

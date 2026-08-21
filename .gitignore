@@ -40,3 +40,6 @@ Thumbs.db
 # 本地 kubeconfig 含密钥，绝对不能提交
 kubeconfig
 kubeconfig.*
+
+# 个人学习笔记，不入库（仅保留在本地）
+COMPARISON.md
