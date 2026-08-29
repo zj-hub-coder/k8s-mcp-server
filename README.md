@@ -4,7 +4,7 @@
 
 本项目是底层 MCP 能力层。上层基于 LangChain / LangGraph 的智能运维 Agent（K8s Ops Agent），通过 MCP 协议接入本 Server，用 LLM 编排工具实现「一句话完成集群排障」，支持 CLI 与飞书机器人双端交互，代码在独立仓库 [LangChain_bot](https://github.com/zj-hub-coder/LangChain_bot)。
 
-> 当前版本**只暴露只读工具**（无 create/update/delete）。后续会逐步加入写操作（create / update / delete / exec / scale），届时会同步补齐安全机制（context 白名单、Secret 遮蔽等），见下文「安全建议」。
+> 当前版本**只暴露只读工具**（无 create/update/delete）。后续会逐步加入写操作（create / update / delete / exec / scale），届时会同步补齐安全机制（context 白名单、Secret 遮蔽等），见下文「安全说明」。
 
 ## 工具清单
 
@@ -134,12 +134,12 @@ K8s 连接配置加载优先级：**in-cluster（Pod 内 SA）→ 显式 `KUBECO
 }
 ```
 
-## 安全建议
+## 安全说明
 
-1. **使用只读 RBAC**：为运行本服务的 Pod / 用户配置只读 ClusterRole，避免借用高权限凭据。
-2. **默认只绑定本机**：`MCP_HOST` 默认 `127.0.0.1`。如需对外暴露，务必在反代层加认证（TLS + Token / OIDC），因为 HTTP transport 本身**无认证与限流**。
-3. **不要关闭证书校验**：`K8S_VERIFY_SSL=false` 仅用于临时调试自签证书，生产环境保持 `true`。
-4. **凭据不入库**：kubeconfig 含密钥，`.gitignore` 已排除 `kubeconfig*`，切勿强制提交。
+- **只读工具**：本项目只暴露只读操作（list / get / describe / logs / events），不提供任何变更操作（create / update / delete）。生产部署建议使用只读 RBAC，仅授予 get / list / watch 权限。
+- **默认监听本机**：`MCP_HOST` 默认 `127.0.0.1`，服务仅对本机可访问。HTTP transport 不提供认证与限流，如需对外暴露，应在反向代理层增加 TLS 与 Token / OIDC 认证。
+- **TLS 证书校验**：默认开启（`K8S_VERIFY_SSL=true`）。`false` 仅用于调试自签证书，生产环境保持开启。
+- **凭据不入库**：kubeconfig 文件包含集群凭据，已通过 `.gitignore` 中的 `kubeconfig`、`kubeconfig.*` 规则排除在版本控制之外。
 
 ## 已知边界
 
