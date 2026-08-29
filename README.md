@@ -2,6 +2,8 @@
 
 基于 [FastMCP](https://github.com/jlowin/fastmcp) 的 Kubernetes 运维查询 MCP 服务。把 `kubectl get / describe / logs / events --watch` 等日常排查动作封装成 LLM 可调用的只读工具，让 Claude 等客户端直接读集群状态、快速定位故障。
 
+本项目是底层 MCP 能力层。上层基于 LangChain / LangGraph 的智能运维 Agent（K8s Ops Agent），通过 MCP 协议接入本 Server，用 LLM 编排工具实现「一句话完成集群排障」，支持 CLI 与飞书机器人双端交互，代码在独立仓库 [LangChain_bot](https://github.com/zj-hub-coder/LangChain_bot)。
+
 > 当前版本**只暴露只读工具**（无 create/update/delete）。后续会逐步加入写操作（create / update / delete / exec / scale），届时会同步补齐安全机制（context 白名单、Secret 遮蔽等），见下文「安全建议」。
 
 ## 工具清单
