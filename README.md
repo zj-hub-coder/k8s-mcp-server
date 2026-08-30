@@ -27,21 +27,20 @@
 ## 架构图
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph LB["LangChain_bot（自研 Agent）"]
-        CLI["CLI 终端"]
-        Lark["飞书机器人"]
-        LG["LangGraph Agent"]
-        LLM["LLM（OpenAI 兼容）"]
-        Mem["多轮记忆 MemorySaver"]
-        Builtin["内置工具（自动发现）"]
+        CLI["CLI 终端"] --> LG["LangGraph Agent"]
+        Lark["飞书机器人"] --> LG
+        LG --> LLM["LLM（OpenAI 兼容）"]
+        LG --> Mem["多轮记忆 MemorySaver"]
+        LG --> Builtin["内置工具（自动发现）"]
     end
 
     subgraph IDE["第三方 AI IDE"]
         Trae["Trae / Cursor / Claude Code"]
     end
 
-    subgraph Server["本 MCP Server（Python / FastMCP）"]
+    subgraph Server["k8s-mcp-server（本仓库 · FastMCP）"]
         Entry["k8s_server.py<br/>入口：导入即注册"]
         App["app.py<br/>FastMCP 实例（叶子模块）"]
         Tools["Tools/ · 11 个只读工具"]
@@ -56,20 +55,15 @@ flowchart LR
         Obj["Node / Pod / Event"]
     end
 
-    CLI --> LG
-    Lark --> LG
-    LG --> LLM
-    LG --> Mem
-    LG --> Builtin
-    LG -->|"MCP<br/>stdio / http"| Entry
-    Trae -->|"MCP<br/>stdio / http"| Entry
+    LG ==>|"MCP 协议<br/>stdio / http"| Entry
+    Trae ==>|"MCP 协议<br/>stdio / http"| Entry
     Entry --> App
     App --> Tools
     App --> Prompts
     App --> Resources
     Tools --> Utils
     Tools --> KC
-    KC -->|"kubernetes SDK<br/>（只读查询）"| API
+    KC ==>|"kubernetes SDK<br/>（只读查询）"| API
     API --> Obj
 ```
 
