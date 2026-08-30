@@ -6,6 +6,26 @@
 
 > 当前版本**只暴露只读工具**（无 create/update/delete）。后续会逐步加入写操作（create / update / delete / exec / scale），届时会同步补齐安全机制（context 白名单、Secret 遮蔽等），见下文「安全说明」。
 
+## 项目演示
+
+底层 MCP Server 采用标准 MCP 协议，可被任意 MCP 客户端复用。下面按「第三方 IDE → 自研 Agent → 团队协作」的顺序，展示接入后的实际对话效果。
+
+**接入 Trae AI IDE**
+
+![Trae 对话查询集群](docs/images/trae-chat-1.png)
+
+![Trae 对话查询集群](docs/images/trae-chat-2.png)
+
+**接入自研 LangChain Agent —— CLI 对话**
+
+![CLI 对话](docs/images/cli-chat.png)
+
+**接入飞书机器人 —— 团队协作**
+
+![飞书机器人对话](docs/images/lark-chat-1.png)
+
+![飞书机器人对话](docs/images/lark-chat-2.png)
+
 ## 工具清单
 
 | 工具 | 说明 | 对应 kubectl |
@@ -28,8 +48,9 @@
 
 ```mermaid
 flowchart LR
-    subgraph Client["MCP 客户端"]
-        LLM["Claude Code / Desktop / Cursor"]
+    subgraph Clients["MCP 客户端"]
+        Agent["LangChain Agent<br/>LangChain_bot 自研<br/>CLI / 飞书机器人"]
+        IDE["Trae / Cursor /<br/>Claude Code"]
     end
 
     subgraph Server["本 MCP Server（Python / FastMCP）"]
@@ -47,7 +68,8 @@ flowchart LR
         Obj["Node / Pod / Event"]
     end
 
-    LLM <-->|"MCP<br/>stdio / http"| Entry
+    Agent -->|"MCP<br/>stdio / http"| Entry
+    IDE -->|"MCP<br/>stdio / http"| Entry
     Entry --> App
     App --> Tools
     App --> Prompts
