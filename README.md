@@ -6,26 +6,6 @@
 
 > 当前版本**只暴露只读工具**（无 create/update/delete）。后续会逐步加入写操作（create / update / delete / exec / scale），届时会同步补齐安全机制（context 白名单、Secret 遮蔽等），见下文「安全说明」。
 
-## 项目演示
-
-底层 MCP Server 采用标准 MCP 协议，可被任意 MCP 客户端复用。下面按「第三方 IDE → 自研 Agent → 团队协作」的顺序，展示接入后的实际对话效果。
-
-**接入 Trae AI IDE**
-
-![Trae 对话查询集群](docs/images/trae-chat-1.png)
-
-![Trae 对话查询集群](docs/images/trae-chat-2.png)
-
-**接入自研 LangChain Agent —— CLI 对话**
-
-![CLI 对话](docs/images/cli-chat.png)
-
-**接入飞书机器人 —— 团队协作**
-
-![飞书机器人对话](docs/images/lark-chat-1.png)
-
-![飞书机器人对话](docs/images/lark-chat-2.png)
-
 ## 工具清单
 
 | 工具 | 说明 | 对应 kubectl |
@@ -48,9 +28,17 @@
 
 ```mermaid
 flowchart LR
-    subgraph Clients["MCP 客户端"]
-        Agent["LangChain Agent<br/>LangChain_bot 自研<br/>CLI / 飞书机器人"]
-        IDE["Trae / Cursor /<br/>Claude Code"]
+    subgraph LB["LangChain_bot（自研 Agent）"]
+        CLI["CLI 终端"]
+        Lark["飞书机器人"]
+        LG["LangGraph Agent"]
+        LLM["LLM（OpenAI 兼容）"]
+        Mem["多轮记忆 MemorySaver"]
+        Builtin["内置工具（自动发现）"]
+    end
+
+    subgraph IDE["第三方 AI IDE"]
+        Trae["Trae / Cursor / Claude Code"]
     end
 
     subgraph Server["本 MCP Server（Python / FastMCP）"]
@@ -68,8 +56,13 @@ flowchart LR
         Obj["Node / Pod / Event"]
     end
 
-    Agent -->|"MCP<br/>stdio / http"| Entry
-    IDE -->|"MCP<br/>stdio / http"| Entry
+    CLI --> LG
+    Lark --> LG
+    LG --> LLM
+    LG --> Mem
+    LG --> Builtin
+    LG -->|"MCP<br/>stdio / http"| Entry
+    Trae -->|"MCP<br/>stdio / http"| Entry
     Entry --> App
     App --> Tools
     App --> Prompts
@@ -89,6 +82,26 @@ flowchart LR
 | 工具层 | `Tools/*.py` | 11 个只读工具，每个一个文件，`@mcp.tool()` 装饰器注册 |
 | 解析层 | `utils/*.py` | 纯解析 / 状态快照对比 / 通用 watch 循环，无 K8s 与 MCP 依赖 |
 | 连接层 | `k8s_client.py` | K8s 客户端懒加载，连接优先级 in-cluster → 显式 kubeconfig → 标准解析链 |
+
+## 项目演示
+
+底层 MCP Server 采用标准 MCP 协议，可被任意 MCP 客户端复用。下面按「第三方 IDE → 自研 Agent → 团队协作」的顺序，展示接入后的实际对话效果。
+
+**接入 Trae AI IDE**
+
+![Trae 对话查询集群](docs/images/trae-chat-1.png)
+
+![Trae 对话查询集群](docs/images/trae-chat-2.png)
+
+**接入自研 LangChain Agent —— CLI 对话**
+
+![CLI 对话](docs/images/cli-chat.png)
+
+**接入飞书机器人 —— 团队协作**
+
+![飞书机器人对话](docs/images/lark-chat-1.png)
+
+![飞书机器人对话](docs/images/lark-chat-2.png)
 
 ## 目录结构
 
