@@ -95,8 +95,6 @@ flowchart TB
 
 ![飞书机器人对话](docs/images/lark-chat-1.png)
 
-![飞书机器人对话](docs/images/lark-chat-2.png)
-
 ## 目录结构
 
 ```
